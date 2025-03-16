@@ -4,11 +4,12 @@ from datetime import datetime
 
 import httpx
 from fastapi import APIRouter, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
-from app.storage import get_access_log, get_pac_file, log_access, save_pac_file
+from app.storage import (delete_access_log, get_access_log, get_pac_file,
+                         log_access, save_pac_file)
 
 router = APIRouter()
 
@@ -34,9 +35,9 @@ async def create_pac_file(
     name: str = Form(...),
     pac_content: str = Form(...),
     proxy_url: str = Form(...),
-    proxied_domains: str = Form(...),
-    proxied_ips: str = Form(...),
-    bypassed_ips: str = Form(...)
+    proxied_domains: str = Form(default=""),
+    proxied_ips: str = Form(default=""),
+    bypassed_ips: str = Form(default="")
 ):
     # Validate name format
     if not re.match(r'^[a-zA-Z0-9_\-]+$', name):
@@ -107,9 +108,9 @@ async def update_pac_file(
     pac_id: str,
     name: str = Form(...),
     proxy_url: str = Form(...),
-    proxied_domains: str = Form(...),
-    proxied_ips: str = Form(...),
-    bypassed_ips: str = Form(...)
+    proxied_domains: str = Form(default=""),
+    proxied_ips: str = Form(default=""),
+    bypassed_ips: str = Form(default="")
 ):
     # Validate name format
     if not re.match(r'^[a-zA-Z0-9_\-]+$', name):
@@ -153,27 +154,22 @@ def generate_pac_content(proxy_url, proxied_domains, proxied_ips, bypassed_ips):
         return [line.strip() for line in lines if line.strip() and not line.strip().startswith('#') and not line.strip().startswith('//')]
 
     # Get and filter values from textareas
-    proxied_domains = filter_comments(proxied_domains.split('\n'))
-    proxied_ips = filter_comments(proxied_ips.split('\n'))
-    bypassed_ips = filter_comments(bypassed_ips.split('\n'))
+    proxied_domains = filter_comments(proxied_domains.split('\n')) if proxied_domains else []
+    proxied_ips = filter_comments(proxied_ips.split('\n')) if proxied_ips else []
+    bypassed_ips = filter_comments(bypassed_ips.split('\n')) if bypassed_ips else []
 
     # Generate the PAC file content
     pac_content = f"""function FindProxyForURL(url, host) {{
     // Bypass proxy for local addresses
-    if (isPlainHostName(host) ||
-        {" ||\n        ".join([f'isInNet(host, "{ip.split("/")[0]}", netmaskFromPrefix("{ip.split("/")[1]}"))' for ip in bypassed_ips])}) {{
+    if (isPlainHostName(host){' ||\n        ' + " ||\n        ".join([f'isInNet(host, "{ip.split("/")[0]}", netmaskFromPrefix("{ip.split("/")[1]}"))' for ip in bypassed_ips]) if bypassed_ips else ''}) {{
         return "DIRECT";
     }}
 
     // Use proxy for specific domains
-    if ({" ||\n        ".join([f'shExpMatch(host, "{domain}")' for domain in proxied_domains])}) {{
-        return "{proxy_url}";
-    }}
+    {"if (" + " ||\n        ".join([f'shExpMatch(host, "{domain}")' for domain in proxied_domains]) + ") {{\n        return \"" + proxy_url + "\";\n    }}" if proxied_domains else ''}
 
     // Use proxy for specific IP ranges
-    if ({" ||\n        ".join([f'isInNet(host, "{ip.split("/")[0]}", netmaskFromPrefix("{ip.split("/")[1]}"))' for ip in proxied_ips])}) {{
-        return "{proxy_url}";
-    }}
+    {"if (" + " ||\n        ".join([f'isInNet(host, "{ip.split("/")[0]}", netmaskFromPrefix("{ip.split("/")[1]}"))' for ip in proxied_ips]) + ") {{\n        return \"" + proxy_url + "\";\n    }}" if proxied_ips else ''}
 
     // Default: direct connection
     return "DIRECT";
@@ -371,3 +367,9 @@ async def test_pac_url(pac_id: str, url: str):
             status_code=400,
             detail=f"Error testing URL: {str(e)}"
         )
+
+@router.delete("/log/{pac_id}", response_class=HTMLResponse)
+async def delete_log(pac_id: str, request: Request):
+    if delete_access_log(pac_id):
+        return RedirectResponse(url=f"{request.scope.get('root_path', '')}/log/{pac_id}", status_code=303)
+    raise HTTPException(status_code=404, detail="Log not found")

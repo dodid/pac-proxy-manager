@@ -10,6 +10,7 @@ ACCESS_LOG_DIR = Path("logs")
 
 def ensure_storage():
     STORAGE_DIR.mkdir(exist_ok=True)
+    ACCESS_LOG_DIR.mkdir(exist_ok=True)
     if not STORAGE_FILE.exists():
         STORAGE_FILE.write_text("{}")
 
@@ -48,3 +49,15 @@ def get_access_log(pac_id: str) -> List[str]:
         return []
     with open(log_file, "r") as f:
         return f.read().splitlines()
+
+def delete_access_log(pac_id: str) -> bool:
+    """
+    Delete the access log file for a specific PAC file
+    :param pac_id: ID of the PAC file
+    :return: True if file was deleted, False if it didn't exist
+    """
+    log_file = ACCESS_LOG_DIR / f"{pac_id}.log"
+    if log_file.exists():
+        log_file.unlink()
+        return True
+    return False
