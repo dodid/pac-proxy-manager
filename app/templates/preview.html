@@ -8,10 +8,14 @@
     </div>
     <div class="card-body">
         <div class="mb-3">
-            <h5>Proxy URL:</h5>
-            <p>{{ pac_file.proxy_url }}</p>
+            <h5>Proxy URL: {{ pac_file.proxy_url }}</h5>
         </div>
-        <pre><code class="language-javascript" style="font-size: 0.9rem;">{{ pac_file.content }}</code></pre>
+        <div class="position-relative">
+            <button class="btn btn-sm btn-outline-secondary position-absolute top-0 end-0 m-2" onclick="copyCode()" title="Copy to clipboard">
+                Copy
+            </button>
+            <pre><code class="language-javascript" style="font-size: 0.9rem;">{{ pac_file.content }}</code></pre>
+        </div>
     </div>
 </div>
 
@@ -19,4 +23,25 @@
 <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" rel="stylesheet" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+
+<script>
+function copyCode() {
+    const code = document.querySelector('pre code').innerText;
+    navigator.clipboard.writeText(code)
+        .then(() => {
+            const btn = document.querySelector('button[onclick="copyCode()"]');
+            btn.innerHTML = 'Copied';
+            btn.classList.remove('btn-outline-secondary');
+            btn.classList.add('btn-success');
+            setTimeout(() => {
+                btn.innerHTML = 'Copy';
+                btn.classList.remove('btn-success');
+                btn.classList.add('btn-outline-secondary');
+            }, 2000);
+        })
+        .catch(err => {
+            alert('Failed to copy code: ' + err);
+        });
+}
+</script>
 {% endblock %}

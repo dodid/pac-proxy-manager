@@ -20,9 +20,25 @@ templates = Jinja2Templates(directory="app/templates")
 async def index(request: Request):
     from app.storage import load_pac_files
     pac_files = load_pac_files()
+
+    # Transform the data to only include what's needed for rendering
+    simplified_pac_files = []
+    for pac in pac_files.values():
+        proxied_count = len([line for line in pac['editor_content']['proxied_domains'].split('\n') if line.strip() and not line.strip().startswith(('#', '//'))]) + \
+                       len([line for line in pac['editor_content']['proxied_ips'].split('\n') if line.strip() and not line.strip().startswith(('#', '//'))])
+        bypassed_count = len([line for line in pac['editor_content']['bypassed_ips'].split('\n') if line.strip() and not line.strip().startswith(('#', '//'))])
+
+        simplified_pac_files.append({
+            'id': pac['id'],
+            'name': pac['name'],
+            'proxy_url': pac['proxy_url'],
+            'proxied_count': proxied_count,
+            'bypassed_count': bypassed_count
+        })
+
     return templates.TemplateResponse("index.html", {
         "request": request,
-        "pac_files": list(pac_files.values())
+        "pac_files": simplified_pac_files
     })
 
 @router.get("/create", response_class=HTMLResponse)

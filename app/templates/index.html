@@ -120,7 +120,7 @@
             <thead>
                 <tr>
                     <th class="ps-4">Name</th>
-                    <th>Proxy URL</th>
+                    <th style="width: 20%; max-width: 40%;">Proxy URL</th>
                     <th class="text-center">Proxied</th>
                     <th class="text-center">Bypassed</th>
                     <th class="ps-4 pe-4">Actions</th>
@@ -136,12 +136,12 @@
                         {{ pac.name }}
                         {% endif %}
                     </td>
-                    <td class="align-middle proxy-url">{{ pac.proxy_url }}</td>
+                    <td class="align-middle proxy-url" style="width: 40%; max-width: 40%;">{{ pac.proxy_url }}</td>
                     <td class="align-middle route-count">
-                        <span>{{ pac.editor_content.proxied_domains.split('\n') | length + pac.editor_content.proxied_ips.split('\n') | length }}</span>
+                        <span>{{ pac.proxied_count }}</span>
                     </td>
                     <td class="align-middle route-count">
-                        <span>{{ pac.editor_content.bypassed_ips.split('\n') | length }}</span>
+                        <span>{{ pac.bypassed_count }}</span>
                     </td>
                     <td class="pe-4 align-middle">
                         <div class="d-flex gap-2">
