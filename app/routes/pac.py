@@ -49,7 +49,6 @@ async def create_pac_file_form(request: Request):
 async def create_pac_file(
     request: Request,
     name: str = Form(...),
-    pac_content: str = Form(...),
     proxy_url: str = Form(...),
     proxied_domains: str = Form(default=""),
     proxied_ips: str = Form(default=""),
@@ -69,6 +68,9 @@ async def create_pac_file(
             "request": request,
             "error": "PAC file with this ID already exists"
         })
+
+    # Generate PAC content
+    pac_content = generate_pac_content(proxy_url, proxied_domains, proxied_ips, bypassed_ips)
 
     # Create new PAC file
     pac_data = {
