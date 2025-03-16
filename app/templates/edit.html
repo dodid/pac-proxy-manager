@@ -2,8 +2,11 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1>Edit PAC File: {{ pac_file.name }}</h1>
+    <h1>Edit PAC: {{ pac_file.name }}</h1>
     <div>
+        <button type="button" class="btn btn-secondary me-2" id="gfwlist-btn">
+            <i class="fas fa-globe-asia me-2"></i>Populate with GFWList
+        </button>
         <button type="submit" form="edit-form" class="btn btn-primary">Save Changes</button>
         <a href="/" class="btn btn-secondary">Cancel</a>
     </div>
@@ -56,6 +59,31 @@
     <input type="hidden" id="pac_content" name="pac_content">
 </form>
 
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="gfwlist-toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast-header">
+            <i class="fas fa-check-circle me-2 text-success"></i>
+            <strong class="me-auto">GFWList Update</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body">
+            Added <span id="added-count">0</span> new rules from GFWList
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Make GFWList toast opaque */
+    #gfwlist-toast {
+        opacity: 1 !important;
+        background-color: rgba(255, 255, 255, 1) !important;
+    }
+
+    #gfwlist-toast .toast-header {
+        background-color: rgba(255, 255, 255, 1) !important;
+    }
+</style>
+
 <script>
 document.querySelector('form').addEventListener('submit', function(e) {
     // Helper function to filter out comments
@@ -107,6 +135,92 @@ function netmaskFromPrefix(prefix) {
 
     // Set the hidden PAC content field
     document.getElementById('pac_content').value = pacContent;
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    const gfwlistBtn = document.getElementById('gfwlist-btn');
+    const proxiedDomainsTextarea = document.getElementById('proxied_domains');
+    const proxiedIPsTextarea = document.getElementById('proxied_ips');
+    const gfwlistToast = new bootstrap.Toast(document.getElementById('gfwlist-toast'));
+
+    gfwlistBtn.addEventListener('click', async function() {
+        try {
+            // Show loading state
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Loading GFWList...';
+
+            // Fetch GFWList
+            const response = await fetch('/gfwlist');
+            if (!response.ok) {
+                throw new Error('Failed to fetch GFWList');
+            }
+
+            const data = await response.json();
+            const domains = data.domains;
+
+            // Helper function to add new items to textarea
+            function addUniqueItems(textarea, newItems) {
+                const existingItems = new Set(
+                    textarea.value.split('\n')
+                        .map(line => line.trim())
+                        .filter(line => line && !line.startsWith('#') && !line.startsWith('//'))
+                );
+
+                const itemsToAdd = newItems.filter(item => !existingItems.has(item));
+                if (itemsToAdd.length > 0) {
+                    if (textarea.value && !textarea.value.endsWith('\n')) {
+                        textarea.value += '\n';
+                    }
+                    textarea.value += itemsToAdd.join('\n');
+                }
+                return itemsToAdd.length;
+            }
+
+            // Add domains and IPs, count added items
+            const addedDomains = addUniqueItems(proxiedDomainsTextarea, domains.filter(d => !d.includes('/')));
+            const addedIPs = addUniqueItems(proxiedIPsTextarea, domains.filter(d => d.includes('/')));
+            const totalAdded = addedDomains + addedIPs;
+
+            // Show toast with results
+            document.getElementById('added-count').textContent = totalAdded;
+            gfwlistToast.show();
+
+            // Restore button state
+            this.innerHTML = '<i class="fas fa-globe-asia me-2"></i>Populate with GFWList';
+            this.disabled = false;
+        } catch (error) {
+            alert('Error: ' + error.message);
+            this.innerHTML = '<i class="fas fa-globe-asia me-2"></i>Populate with GFWList';
+            this.disabled = false;
+        }
+    });
+
+    const nameInput = document.querySelector('input[name="name"]');
+    const nameError = document.createElement('div');
+    nameError.className = 'invalid-feedback';
+    nameError.textContent = 'Name can only contain letters, numbers, underscores (_), and hyphens (-)';
+    nameInput.parentNode.appendChild(nameError);
+
+    nameInput.addEventListener('input', function() {
+        const isValid = /^[a-zA-Z0-9_\-]+$/.test(this.value);
+        if (isValid) {
+            this.classList.remove('is-invalid');
+            this.classList.add('is-valid');
+        } else {
+            this.classList.remove('is-valid');
+            this.classList.add('is-invalid');
+        }
+    });
+
+    // Add validation on form submission
+    const form = document.querySelector('form');
+    form.addEventListener('submit', function(e) {
+        if (!/^[a-zA-Z0-9_\-]+$/.test(nameInput.value)) {
+            e.preventDefault();
+            nameInput.classList.add('is-invalid');
+            nameError.style.display = 'block';
+        }
+    });
 });
 </script>
 {% endblock %}

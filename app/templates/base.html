@@ -21,6 +21,11 @@
         }
         .toast {
             min-width: 300px;
+            opacity: 1 !important;
+            background-color: rgba(255, 255, 255, 1) !important;
+        }
+        .toast-header {
+            background-color: rgba(255, 255, 255, 1) !important;
         }
     </style>
 </head>
@@ -34,9 +39,9 @@
         <div class="toast-container">
             {% if error %}
             <div class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
-                <div class="toast-header bg-danger text-white">
+                <div class="toast-header bg-danger text-black">
                     <strong class="me-auto">Error</strong>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
                 </div>
                 <div class="toast-body">
                     {{ error }}

@@ -1,4 +1,5 @@
 import base64
+import re
 from datetime import datetime
 
 import httpx
@@ -7,8 +8,7 @@ from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
-from app.storage import (delete_pac_file, get_access_log, get_pac_file,
-                         log_access, save_pac_file)
+from app.storage import get_access_log, get_pac_file, log_access, save_pac_file
 
 router = APIRouter()
 
@@ -38,12 +38,19 @@ async def create_pac_file(
     proxied_ips: str = Form(...),
     bypassed_ips: str = Form(...)
 ):
+    # Validate name format
+    if not re.match(r'^[a-zA-Z0-9_\-]+$', name):
+        return templates.TemplateResponse("create.html", {
+            "request": request,
+            "error": "Name can only contain letters, numbers, underscores (_), and hyphens (-)"
+        })
+
     file_id = name.lower().replace(' ', '-').replace('/', '-')
 
     if get_pac_file(file_id):
         return templates.TemplateResponse("create.html", {
             "request": request,
-            "error": "PAC file with this name already exists"
+            "error": "PAC file with this ID already exists"
         })
 
     # Create new PAC file
@@ -80,9 +87,9 @@ async def serve_pac_file(pac_id: str, request: Request):
 
     return Response(content=get_pac_file(pac_id)["content"], media_type="application/x-ns-proxy-autoconfig")
 
-@router.get("/edit/{file_id}", response_class=HTMLResponse)
-async def edit_pac_file_form(request: Request, file_id: str):
-    pac_file = get_pac_file(file_id)
+@router.get("/edit/{pac_id}", response_class=HTMLResponse)
+async def edit_pac_file_form(request: Request, pac_id: str):
+    pac_file = get_pac_file(pac_id)
     if not pac_file:
         return templates.TemplateResponse("index.html", {
             "request": request,
@@ -94,17 +101,25 @@ async def edit_pac_file_form(request: Request, file_id: str):
         "pac_file": pac_file
     })
 
-@router.post("/edit/{file_id}", response_class=HTMLResponse)
+@router.post("/edit/{pac_id}", response_class=HTMLResponse)
 async def update_pac_file(
     request: Request,
-    file_id: str,
+    pac_id: str,
     name: str = Form(...),
     proxy_url: str = Form(...),
     proxied_domains: str = Form(...),
     proxied_ips: str = Form(...),
     bypassed_ips: str = Form(...)
 ):
-    pac_file = get_pac_file(file_id)
+    # Validate name format
+    if not re.match(r'^[a-zA-Z0-9_\-]+$', name):
+        return templates.TemplateResponse("edit.html", {
+            "request": request,
+            "pac_file": get_pac_file(pac_id),
+            "error": "Name can only contain letters, numbers, underscores (_), and hyphens (-)"
+        })
+
+    pac_file = get_pac_file(pac_id)
     if not pac_file:
         raise HTTPException(status_code=404, detail="PAC file not found")
 
@@ -125,8 +140,8 @@ async def update_pac_file(
         "updated_at": datetime.now().isoformat()
     }
 
-    save_pac_file(file_id, updated_data)
-    logger.info(f"Updated PAC file: {file_id}")
+    save_pac_file(pac_id, updated_data)
+    logger.info(f"Updated PAC file: {pac_id}")
     return templates.TemplateResponse("preview.html", {
         "request": request,
         "pac_file": updated_data
@@ -176,41 +191,52 @@ function netmaskFromPrefix(prefix) {{
 
     return pac_content
 
-@router.get("/log/{file_id}", response_class=HTMLResponse)
-async def view_access_log(request: Request, file_id: str):
-    pac_file = get_pac_file(file_id)
+@router.get("/log/{pac_id}", response_class=HTMLResponse)
+async def view_access_log(request: Request, pac_id: str):
+    pac_file = get_pac_file(pac_id)
     if not pac_file:
         raise HTTPException(status_code=404, detail="PAC file not found")
 
-    access_log = get_access_log(file_id)
+    access_log = get_access_log(pac_id)
     return templates.TemplateResponse("log.html", {
         "request": request,
         "pac_file": pac_file,
         "access_log": access_log
     })
 
-@router.delete("/delete/{file_id}")
-async def delete_pac_file(file_id: str):
+@router.delete("/delete/{pac_id}")
+async def delete_pac_file(pac_id: str):
+    from app.storage import delete_pac_file
     try:
-        delete_pac_file(file_id)
-        logger.info(f"Deleted PAC file: {file_id}")
+        delete_pac_file(pac_id)
+        logger.info(f"Deleted PAC file: {pac_id}")
         return Response(status_code=204)
     except Exception as e:
-        logger.error(f"Error deleting PAC file {file_id}: {str(e)}")
+        logger.error(f"Error deleting PAC file {pac_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Error deleting PAC file")
 
 # Add the moved endpoints from main.py
 async def fetch_gfwlist():
+    mirror_urls = [
+        "https://pagure.io/gfwlist/raw/master/f/gfwlist.txt",
+        "http://repo.or.cz/gfwlist.git/blob_plain/HEAD:/gfwlist.txt",
+        "https://bitbucket.org/gfwlist/gfwlist/raw/HEAD/gfwlist.txt",
+        "https://gitlab.com/gfwlist/gfwlist/raw/master/gfwlist.txt",
+        "https://git.tuxfamily.org/gfwlist/gfwlist.git/plain/gfwlist.txt",
+        "https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt"
+    ]
+
     async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(
-                "https://pagure.io/gfwlist/raw/master/f/gfwlist.txt",
-                timeout=30.0
-            )
-            response.raise_for_status()
-            return response.text
-        except Exception as e:
-            raise Exception(f"Failed to fetch GFWList: {str(e)}")
+        for url in mirror_urls:
+            try:
+                response = await client.get(url, timeout=30.0)
+                response.raise_for_status()
+                return response.text
+            except Exception as e:
+                logger.warning(f"Failed to fetch GFWList from {url}: {str(e)}")
+                continue
+
+        raise Exception("All GFWList mirrors failed")
 
 def parse_gfwlist(content):
     """Parse GFWList content and extract domains"""
@@ -218,15 +244,32 @@ def parse_gfwlist(content):
         # Decode the base64 content
         decoded = base64.b64decode(content).decode('utf-8')
         domains = set()
+
         for line in decoded.splitlines():
             line = line.strip()
             if line and not line.startswith(('!', '[', '@', '/')):
-                # Handle ||domain.com pattern
+                # Handle ||domain.com pattern (blocks domain and all subdomains)
                 if line.startswith('||'):
                     domain = line[2:].split('/')[0]  # Remove || and any path
                     domain = domain.split(':')[0]    # Remove port
                     if domain and '.' in domain:
                         domains.add(f'*.{domain}')
+                        domains.add(domain)  # Include the base domain
+
+                # Handle .domain.com pattern (blocks all subdomains)
+                elif line.startswith('.'):
+                    domain = line[1:].split('/')[0]  # Remove . and any path
+                    domain = domain.split(':')[0]    # Remove port
+                    if domain and '.' in domain:
+                        domains.add(f'*.{domain}')
+
+                # Handle |http://domain.com pattern (blocks specific URL)
+                elif line.startswith('|http://') or line.startswith('|https://'):
+                    domain = line.split('//')[1].split('/')[0]  # Get domain part
+                    domain = domain.split(':')[0]  # Remove port
+                    if domain and '.' in domain:
+                        domains.add(domain)
+
                 # Handle regular domains
                 else:
                     # Remove protocol and path
@@ -235,6 +278,7 @@ def parse_gfwlist(content):
                     domain = domain.lstrip('.*').split(':')[0]
                     if domain and '.' in domain:
                         domains.add(domain)
+
         return sorted(domains)
     except Exception as e:
         raise Exception(f"Error parsing GFWList: {str(e)}")

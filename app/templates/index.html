@@ -108,7 +108,7 @@
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="mb-0">PAC Files</h1>
+    <h1 class="mb-0">PAC Manager</h1>
     <a href="/create" class="btn btn-primary">
         <i class="fas fa-plus me-2"></i>Create New
     </a>
@@ -123,13 +123,19 @@
                     <th>Proxy URL</th>
                     <th class="text-center">Proxied</th>
                     <th class="text-center">Bypassed</th>
-                    <th class="pe-4">Actions</th>
+                    <th class="ps-4 pe-4">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for pac in pac_files %}
                 <tr>
-                    <td class="ps-4 align-middle">{{ pac.name }}</td>
+                    <td class="ps-4 align-middle">
+                        {% if pac.name != pac.id %}
+                        <span data-bs-toggle="tooltip" title="ID: {{ pac.id }}">{{ pac.name }}</span>
+                        {% else %}
+                        {{ pac.name }}
+                        {% endif %}
+                    </td>
                     <td class="align-middle proxy-url">{{ pac.proxy_url }}</td>
                     <td class="align-middle route-count">
                         <span>{{ pac.editor_content.proxied_domains.split('\n') | length + pac.editor_content.proxied_ips.split('\n') | length }}</span>
@@ -142,10 +148,10 @@
                             <a href="/edit/{{ pac.id }}" class="btn action-btn">
                                 <i class="fas fa-edit"></i>Edit
                             </a>
-                            <button class="btn action-btn copy-url-btn" data-url="/{{ pac.name }}/proxy.pac">
+                            <button class="btn action-btn copy-url-btn" data-id="{{ pac.id }}">
                                 <i class="fas fa-copy"></i>Copy
                             </button>
-                            <button class="btn action-btn test-url-btn" data-name="{{ pac.name }}">
+                            <button class="btn action-btn test-url-btn" data-id="{{ pac.id }}">
                                 <i class="fas fa-vial"></i>Test URL
                             </button>
                             <div class="dropdown">
@@ -176,34 +182,41 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize Bootstrap tooltips
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+
     // Remove click event listeners for dropdowns since we're using hover
     const dropdownToggles = document.querySelectorAll('.dropdown-toggle');
     dropdownToggles.forEach(toggle => {
         toggle.removeAttribute('data-bs-toggle');
     });
 
-    // Add slight delay for better user experience
-    let hoverTimeout;
+    // Improved hover handling with event delegation
     const dropdowns = document.querySelectorAll('.dropdown');
+    let activeDropdown = null;
 
-    dropdowns.forEach(dropdown => {
-        dropdown.addEventListener('mouseenter', function() {
-            clearTimeout(hoverTimeout);
-            this.querySelector('.dropdown-menu').style.display = 'block';
-        });
-
-        dropdown.addEventListener('mouseleave', function() {
-            const menu = this.querySelector('.dropdown-menu');
-            hoverTimeout = setTimeout(() => {
-                menu.style.display = 'none';
-            }, 200); // 200ms delay before hiding
-        });
+    document.addEventListener('mouseover', function(event) {
+        const dropdown = event.target.closest('.dropdown');
+        if (dropdown) {
+            if (activeDropdown && activeDropdown !== dropdown) {
+                activeDropdown.querySelector('.dropdown-menu').style.display = 'none';
+            }
+            activeDropdown = dropdown;
+            dropdown.querySelector('.dropdown-menu').style.display = 'block';
+        } else if (activeDropdown) {
+            activeDropdown.querySelector('.dropdown-menu').style.display = 'none';
+            activeDropdown = null;
+        }
     });
 
     // Add click handlers to all copy URL buttons
     document.querySelectorAll('.copy-url-btn').forEach(button => {
         button.addEventListener('click', function() {
-            const url = this.getAttribute('data-url');
+            const pacId = this.getAttribute('data-id');
+            const url = `/${pacId}/proxy.pac`;
             navigator.clipboard.writeText(window.location.origin + url)
                 .then(() => {
                     // Show temporary success message
@@ -234,17 +247,27 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (confirm(`Are you sure you want to delete "${pacName}"?`)) {
                 fetch(`/delete/${pacId}`, {
-                    method: 'DELETE'
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}' // Add CSRF token for security
+                    }
                 })
                 .then(response => {
                     if (response.ok) {
-                        window.location.reload();
+                        // Instead of reloading, remove the row from the table
+                        const row = button.closest('tr');
+                        if (row) {
+                            row.remove();
+                        }
                     } else {
-                        alert('Failed to delete PAC file');
+                        response.json().then(data => {
+                            alert(`Failed to delete PAC file: ${data.message || 'Unknown error'}`);
+                        });
                     }
                 })
                 .catch(err => {
-                    alert('Error deleting PAC file: ' + err);
+                    alert('Error deleting PAC file: ' + err.message);
                 });
             }
         });
@@ -253,7 +276,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Update test URL button handler
     document.querySelectorAll('.test-url-btn').forEach(button => {
         button.addEventListener('click', async function() {
-            const pacName = this.getAttribute('data-name');
+            const pacId = this.getAttribute('data-id');
             const testUrl = prompt('Enter URL to test (e.g., https://example.com):');
 
             if (testUrl) {
@@ -263,7 +286,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Testing...';
 
                     // Test URL
-                    const response = await fetch(`/test/${pacName}?url=${encodeURIComponent(testUrl)}`);
+                    const response = await fetch(`/test/${pacId}?url=${encodeURIComponent(testUrl)}`);
 
                     if (!response.ok) {
                         // Handle API errors

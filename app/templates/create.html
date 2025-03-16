@@ -9,7 +9,7 @@
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1>Create New PAC File</h1>
+    <h1>Create New PAC</h1>
     <div>
         <button type="button" class="btn btn-secondary me-2" id="gfwlist-btn">
             <i class="fas fa-globe-asia me-2"></i>Populate with GFWList
@@ -42,8 +42,8 @@
             <div class="mb-3">
                 <label for="proxied_domains" class="form-label">Proxied Domains (one per line)</label>
                 <textarea class="form-control editor" id="proxied_domains" name="proxied_domains" rows="15"># Example domains:
-*.example.com
-// *.google.com
+// *.example.com
+*.google.com
 github.com
 </textarea>
                 <small class="form-text text-muted">Use * for wildcard subdomains. Use # or // for comments.</small>
@@ -54,7 +54,7 @@ github.com
             <div class="mb-3">
                 <label for="proxied_ips" class="form-label">Proxied IP Ranges (CIDR notation)</label>
                 <textarea class="form-control editor" id="proxied_ips" name="proxied_ips" rows="15"># Example IP ranges:
-192.168.1.0/24
+// 192.168.1.0/24
 // 10.0.0.0/8
 </textarea>
                 <small class="form-text text-muted">One CIDR range per line. Use # or // for comments.</small>
@@ -66,7 +66,7 @@ github.com
                 <label for="bypassed_ips" class="form-label">Bypassed IP Ranges (CIDR notation)</label>
                 <textarea class="form-control editor" id="bypassed_ips" name="bypassed_ips" rows="15"># Standard local IP ranges:
 127.0.0.0/8
-// 10.0.0.0/8
+10.0.0.0/8
 172.16.0.0/12
 192.168.0.0/16
 169.254.0.0/16
@@ -200,6 +200,25 @@ document.addEventListener('DOMContentLoaded', function() {
             alert('Error: ' + error.message);
             this.innerHTML = '<i class="fas fa-globe-asia me-2"></i>Populate with GFWList';
             this.disabled = false;
+        }
+    });
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    const nameInput = document.querySelector('input[name="name"]');
+    const nameError = document.createElement('div');
+    nameError.className = 'invalid-feedback';
+    nameError.textContent = 'Name can only contain letters, numbers, underscores (_), and hyphens (-)';
+    nameInput.parentNode.appendChild(nameError);
+
+    nameInput.addEventListener('input', function() {
+        const isValid = /^[a-zA-Z0-9_\-]+$/.test(this.value);
+        if (isValid) {
+            this.classList.remove('is-invalid');
+            this.classList.add('is-valid');
+        } else {
+            this.classList.remove('is-valid');
+            this.classList.add('is-invalid');
         }
     });
 });
