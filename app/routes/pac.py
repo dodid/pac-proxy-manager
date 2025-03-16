@@ -165,41 +165,78 @@ async def update_pac_file(
     })
 
 def generate_pac_content(proxy_url, proxied_domains, proxied_ips, bypassed_ips):
-    # Helper function to filter out comments
-    def filter_comments(lines):
-        return [line.strip() for line in lines if line.strip() and not line.strip().startswith('#') and not line.strip().startswith('//')]
+    # Helper function to filter out comments and empty lines
+    def filter_rules(lines):
+        return [line.strip() for line in lines if line.strip() and not line.strip().startswith(('#', '//'))]
 
-    # Get and filter values from textareas
-    proxied_domains = filter_comments(proxied_domains.split('\n')) if proxied_domains else []
-    proxied_ips = filter_comments(proxied_ips.split('\n')) if proxied_ips else []
-    bypassed_ips = filter_comments(bypassed_ips.split('\n')) if bypassed_ips else []
+    # Filter and process rules
+    proxied_domains = filter_rules(proxied_domains.split('\n')) if proxied_domains else []
+    proxied_ips = filter_rules(proxied_ips.split('\n')) if proxied_ips else []
+    bypassed_ips = filter_rules(bypassed_ips.split('\n')) if bypassed_ips else []
 
-    # Generate the PAC file content
-    pac_content = f"""function FindProxyForURL(url, host) {{
+    # Generate optimized PAC content
+    pac_content = """function FindProxyForURL(url, host) {
     // Bypass proxy for local addresses
-    if (isPlainHostName(host){' ||\n        ' + " ||\n        ".join([f'isInNet(host, "{ip.split("/")[0]}", netmaskFromPrefix("{ip.split("/")[1]}"))' for ip in bypassed_ips]) if bypassed_ips else ''}) {{
-        return "DIRECT";
-    }}
+    if (isPlainHostName(host)"""
 
+    # Add bypass IPs if any
+    if bypassed_ips:
+        bypass_conditions = " ||\n        " + " ||\n        ".join(
+            [f'isInNet(host, "{ip.split("/")[0]}", netmaskFromPrefix("{ip.split("/")[1]}"))'
+             for ip in bypassed_ips]
+        )
+        pac_content += bypass_conditions
+
+    pac_content += ") {\n        return \"DIRECT\";\n    }\n"
+
+    # Add proxied domains if any
+    if proxied_domains:
+        # Convert shell patterns to optimized regex
+        domain_patterns = [
+            pattern
+                .replace('.', '\\.')
+                .replace('*', '[^.]*')
+                .replace('?', '.')
+            for pattern in proxied_domains
+        ]
+        domain_regex = '^(' + '|'.join(domain_patterns) + ')$'
+        pac_content += f"""
     // Use proxy for specific domains
-    {"if (" + " ||\n        ".join([f'shExpMatch(host, "{domain}")' for domain in proxied_domains]) + ") {{\n        return \"" + proxy_url + "\";\n    }}" if proxied_domains else ''}
+    if (/{domain_regex}/.test(host)) {{
+        return "{proxy_url}";
+    }}
+"""
 
+    # Add proxied IPs if any
+    if proxied_ips:
+        ip_conditions = " ||\n        " + " ||\n        ".join(
+            [f'isInNet(host, "{ip.split("/")[0]}", netmaskFromPrefix("{ip.split("/")[1]}"))'
+             for ip in proxied_ips]
+        )
+        pac_content += f"""
     // Use proxy for specific IP ranges
-    {"if (" + " ||\n        ".join([f'isInNet(host, "{ip.split("/")[0]}", netmaskFromPrefix("{ip.split("/")[1]}"))' for ip in proxied_ips]) + ") {{\n        return \"" + proxy_url + "\";\n    }}" if proxied_ips else ''}
+    if ({ip_conditions}) {{
+        return "{proxy_url}";
+    }}
+"""
 
+    # Add default direct connection
+    pac_content += """
     // Default: direct connection
     return "DIRECT";
-}}
+}
 
-function netmaskFromPrefix(prefix) {{
-    var mask = [];
-    for (var i = 0; i < 4; i++) {{
-        var n = Math.min(prefix, 8);
-        mask.push(256 - Math.pow(2, 8 - n));
-        prefix -= n;
-    }}
-    return mask.join('.');
-}}"""
+// Precomputed netmask values
+const NETMASKS = [0, 128, 192, 224, 240, 248, 252, 254, 255];
+
+function netmaskFromPrefix(prefix) {
+    return [
+        NETMASKS[Math.min(prefix, 8)],
+        NETMASKS[Math.min(Math.max(prefix - 8, 0), 8)],
+        NETMASKS[Math.min(Math.max(prefix - 16, 0), 8)],
+        NETMASKS[Math.min(Math.max(prefix - 24, 0), 8)]
+    ].join('.');
+}"""
 
     return pac_content
 
