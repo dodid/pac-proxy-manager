@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Edit PAC File: {{ pac_file.name }}</h1>
+    <div>
+        <button type="submit" form="edit-form" class="btn btn-primary">Save Changes</button>
+        <a href="/" class="btn btn-secondary">Cancel</a>
+    </div>
+</div>
+
+<form id="edit-form" method="post" action="/edit/{{ pac_file.id }}">
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <div class="mb-3">
+                <label for="name" class="form-label">PAC File Name</label>
+                <input type="text" class="form-control" id="name" name="name" value="{{ pac_file.name }}" required>
+                <small class="form-text text-muted">Enter a unique name for your PAC file</small>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="mb-3">
+                <label for="proxy_url" class="form-label">Proxy URL</label>
+                <input type="text" class="form-control" id="proxy_url" name="proxy_url" value="{{ pac_file.proxy_url }}" required>
+                <small class="form-text text-muted">Enter the proxy URL (e.g., SOCKS5 127.0.0.1:1080)</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-4">
+            <div class="mb-3">
+                <label for="proxied_domains" class="form-label">Proxied Domains (one per line)</label>
+                <textarea class="form-control editor" id="proxied_domains" name="proxied_domains" rows="15">{{ pac_file.editor_content.proxied_domains }}</textarea>
+                <small class="form-text text-muted">Use * for wildcard subdomains. Use # or // for comments.</small>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="mb-3">
+                <label for="proxied_ips" class="form-label">Proxied IP Ranges (CIDR notation)</label>
+                <textarea class="form-control editor" id="proxied_ips" name="proxied_ips" rows="15">{{ pac_file.editor_content.proxied_ips }}</textarea>
+                <small class="form-text text-muted">One CIDR range per line. Use # or // for comments.</small>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="mb-3">
+                <label for="bypassed_ips" class="form-label">Bypassed IP Ranges (CIDR notation)</label>
+                <textarea class="form-control editor" id="bypassed_ips" name="bypassed_ips" rows="15">{{ pac_file.editor_content.bypassed_ips }}</textarea>
+                <small class="form-text text-muted">Standard local IP ranges are pre-filled. Use # or // for comments.</small>
+            </div>
+        </div>
+    </div>
+
+    <input type="hidden" id="pac_content" name="pac_content">
+</form>
+
+<script>
+document.querySelector('form').addEventListener('submit', function(e) {
+    // Helper function to filter out comments
+    function filterComments(lines) {
+        return lines
+            .map(line => line.trim())
+            .filter(line => line && !line.startsWith('#') && !line.startsWith('//'));
+    }
+
+    // Get values from inputs
+    const proxyUrl = document.getElementById('proxy_url').value;
+
+    // Get and filter values from textareas
+    const proxiedDomains = filterComments(document.getElementById('proxied_domains').value.split('\n'));
+    const proxiedIPs = filterComments(document.getElementById('proxied_ips').value.split('\n'));
+    const bypassedIPs = filterComments(document.getElementById('bypassed_ips').value.split('\n'));
+
+    // Generate PAC content
+    const pacContent = `function FindProxyForURL(url, host) {
+    // Bypass proxy for local addresses
+    if (isPlainHostName(host) ||
+        ${bypassedIPs.map(ip => `isInNet(host, "${ip.split('/')[0]}", netmaskFromPrefix("${ip.split('/')[1]}"))`).join(' ||\n        ')}) {
+        return "DIRECT";
+    }
+
+    // Use proxy for specific domains
+    if (${proxiedDomains.map(domain => `shExpMatch(host, "${domain}")`).join(' ||\n        ')}) {
+        return "${proxyUrl}";
+    }
+
+    // Use proxy for specific IP ranges
+    if (${proxiedIPs.map(ip => `isInNet(host, "${ip.split('/')[0]}", netmaskFromPrefix("${ip.split('/')[1]}"))`).join(' ||\n        ')}) {
+        return "${proxyUrl}";
+    }
+
+    // Default: direct connection
+    return "DIRECT";
+}
+
+function netmaskFromPrefix(prefix) {
+    var mask = [];
+    for (var i = 0; i < 4; i++) {
+        var n = Math.min(prefix, 8);
+        mask.push(256 - Math.pow(2, 8 - n));
+        prefix -= n;
+    }
+    return mask.join('.');
+}`;
+
+    // Set the hidden PAC content field
+    document.getElementById('pac_content').value = pacContent;
+});
+</script>
+{% endblock %}
