@@ -14,7 +14,6 @@ from app.routes import pac
 from app.utils.logger import setup_logger
 
 app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
 # Setup logger
