@@ -16,7 +16,7 @@ router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
 @router.get("/", response_class=HTMLResponse)
-async def list_pac_files(request: Request):
+async def index(request: Request):
     from app.storage import load_pac_files
     pac_files = load_pac_files()
     return templates.TemplateResponse("index.html", {

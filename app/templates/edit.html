@@ -8,11 +8,11 @@
             <i class="fas fa-globe-asia me-2"></i>Populate with GFWList
         </button>
         <button type="submit" form="edit-form" class="btn btn-primary">Save Changes</button>
-        <a href="/" class="btn btn-secondary">Cancel</a>
+        <a href="{{ request.url_for('index') }}" class="btn btn-secondary">Cancel</a>
     </div>
 </div>
 
-<form id="edit-form" method="post" action="/edit/{{ pac_file.id }}">
+<form id="edit-form" method="post" action="{{ request.url_for('update_pac_file', pac_id=pac_file.id) }}">
     <div class="row mb-3">
         <div class="col-md-6">
             <div class="mb-3">
@@ -150,7 +150,7 @@ document.addEventListener('DOMContentLoaded', function() {
             this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Loading GFWList...';
 
             // Fetch GFWList
-            const response = await fetch('/gfwlist');
+            const response = await fetch("{{ request.url_for('get_gfwlist') }}");
             if (!response.ok) {
                 throw new Error('Failed to fetch GFWList');
             }
