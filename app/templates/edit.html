@@ -5,7 +5,10 @@
     <h1>Edit PAC: {{ pac_file.name }}</h1>
     <div>
         <button type="button" class="btn btn-secondary me-2" id="gfwlist-btn">
-            <i class="fas fa-globe-asia me-2"></i>Populate with GFWList
+            Proxy GFWList
+        </button>
+        <button type="button" class="btn btn-secondary me-2" id="easylist-btn">
+            Block EasyList
         </button>
         <button type="submit" form="edit-form" class="btn btn-primary">Save Changes</button>
         <a href="{{ request.url_for('index') }}" class="btn btn-secondary">Cancel</a>
@@ -41,9 +44,9 @@
 
         <div class="col-md-4">
             <div class="mb-3">
-                <label for="proxied_ips" class="form-label">Proxied IP Ranges (CIDR notation)</label>
-                <textarea class="form-control editor" id="proxied_ips" name="proxied_ips" rows="15">{{ pac_file.editor_content.proxied_ips }}</textarea>
-                <small class="form-text text-muted">One CIDR range per line. Use # or // for comments.</small>
+                <label for="blocked_domains" class="form-label">Blocked Domains (one per line)</label>
+                <textarea class="form-control editor" id="blocked_domains" name="blocked_domains" rows="15">{{ pac_file.editor_content.blocked_domains }}</textarea>
+                <small class="form-text text-muted">Exact domains only (no wildcards). Use # or // for comments.</small>
             </div>
         </div>
 
@@ -98,7 +101,7 @@ document.querySelector('form').addEventListener('submit', function(e) {
 
     // Get and filter values from textareas
     const proxiedDomains = filterComments(document.getElementById('proxied_domains').value.split('\n'));
-    const proxiedIPs = filterComments(document.getElementById('proxied_ips').value.split('\n'));
+    const blockedDomains = filterComments(document.getElementById('blocked_domains').value.split('\n'));
     const bypassedIPs = filterComments(document.getElementById('bypassed_ips').value.split('\n'));
 
     // Generate PAC content
@@ -115,7 +118,7 @@ document.querySelector('form').addEventListener('submit', function(e) {
     }
 
     // Use proxy for specific IP ranges
-    if (${proxiedIPs.map(ip => `isInNet(host, "${ip.split('/')[0]}", netmaskFromPrefix("${ip.split('/')[1]}"))`).join(' ||\n        ')}) {
+    if (${proxiedDomains.map(domain => `shExpMatch(host, "${domain}")`).join(' ||\n        ')}) {
         return "${proxyUrl}";
     }
 
@@ -140,7 +143,7 @@ function netmaskFromPrefix(prefix) {
 document.addEventListener('DOMContentLoaded', function() {
     const gfwlistBtn = document.getElementById('gfwlist-btn');
     const proxiedDomainsTextarea = document.getElementById('proxied_domains');
-    const proxiedIPsTextarea = document.getElementById('proxied_ips');
+    const blockedDomainsTextarea = document.getElementById('blocked_domains');
     const gfwlistToast = new bootstrap.Toast(document.getElementById('gfwlist-toast'));
 
     gfwlistBtn.addEventListener('click', async function() {
@@ -178,7 +181,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Add domains and IPs, count added items
             const addedDomains = addUniqueItems(proxiedDomainsTextarea, domains.filter(d => !d.includes('/')));
-            const addedIPs = addUniqueItems(proxiedIPsTextarea, domains.filter(d => d.includes('/')));
+            const addedIPs = addUniqueItems(proxiedDomainsTextarea, domains.filter(d => d.includes('/')));
             const totalAdded = addedDomains + addedIPs;
 
             // Show toast with results
@@ -186,11 +189,11 @@ document.addEventListener('DOMContentLoaded', function() {
             gfwlistToast.show();
 
             // Restore button state
-            this.innerHTML = '<i class="fas fa-globe-asia me-2"></i>Populate with GFWList';
+            this.innerHTML = 'Proxy GFWList';
             this.disabled = false;
         } catch (error) {
             alert('Error: ' + error.message);
-            this.innerHTML = '<i class="fas fa-globe-asia me-2"></i>Populate with GFWList';
+            this.innerHTML = 'Proxy GFWList';
             this.disabled = false;
         }
     });
@@ -219,6 +222,53 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             nameInput.classList.add('is-invalid');
             nameError.style.display = 'block';
+        }
+    });
+
+    const easylistBtn = document.getElementById('easylist-btn');
+
+    easylistBtn.addEventListener('click', async function() {
+        try {
+            // Show loading state
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Loading EasyList...';
+
+            // Fetch EasyList
+            const response = await fetch("{{ request.url_for('get_easylist') }}");
+            if (!response.ok) {
+                throw new Error('Failed to fetch EasyList');
+            }
+
+            const data = await response.json();
+            const domains = data.domains;
+
+            // Helper function to add new items to textarea
+            function addUniqueItems(textarea, newItems) {
+                const existingItems = new Set(
+                    textarea.value.split('\n')
+                        .map(line => line.trim())
+                        .filter(line => line && !line.startsWith('#') && !line.startsWith('//'))
+                );
+
+                const itemsToAdd = newItems.filter(item => !existingItems.has(item));
+                if (itemsToAdd.length > 0) {
+                    if (textarea.value && !textarea.value.endsWith('\n')) {
+                        textarea.value += '\n';
+                    }
+                    textarea.value += itemsToAdd.join('\n');
+                }
+            }
+
+            // Add domains to Blocked Domains
+            addUniqueItems(blockedDomainsTextarea, domains);
+
+            // Restore button state
+            this.innerHTML = 'Block EasyList';
+            this.disabled = false;
+        } catch (error) {
+            alert('Error: ' + error.message);
+            this.innerHTML = 'Block EasyList';
+            this.disabled = false;
         }
     });
 });

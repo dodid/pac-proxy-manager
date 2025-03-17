@@ -24,8 +24,8 @@ async def index(request: Request):
     # Transform the data to only include what's needed for rendering
     simplified_pac_files = []
     for pac in pac_files.values():
-        proxied_count = len([line for line in pac['editor_content']['proxied_domains'].split('\n') if line.strip() and not line.strip().startswith(('#', '//'))]) + \
-                       len([line for line in pac['editor_content']['proxied_ips'].split('\n') if line.strip() and not line.strip().startswith(('#', '//'))])
+        proxied_count = len([line for line in pac['editor_content']['proxied_domains'].split('\n') if line.strip() and not line.strip().startswith(('#', '//'))])
+        blocked_count = len([line for line in pac['editor_content']['blocked_domains'].split('\n') if line.strip() and not line.strip().startswith(('#', '//'))])
         bypassed_count = len([line for line in pac['editor_content']['bypassed_ips'].split('\n') if line.strip() and not line.strip().startswith(('#', '//'))])
 
         simplified_pac_files.append({
@@ -33,6 +33,7 @@ async def index(request: Request):
             'name': pac['name'],
             'proxy_url': pac['proxy_url'],
             'proxied_count': proxied_count,
+            'blocked_count': blocked_count,
             'bypassed_count': bypassed_count
         })
 
@@ -51,7 +52,7 @@ async def create_pac_file(
     name: str = Form(...),
     proxy_url: str = Form(...),
     proxied_domains: str = Form(default=""),
-    proxied_ips: str = Form(default=""),
+    blocked_domains: str = Form(default=""),
     bypassed_ips: str = Form(default="")
 ):
     # Validate name format
@@ -70,7 +71,7 @@ async def create_pac_file(
         })
 
     # Generate PAC content
-    pac_content = generate_pac_content(proxy_url, proxied_domains, proxied_ips, bypassed_ips)
+    pac_content = generate_pac_content(proxy_url, proxied_domains, blocked_domains, bypassed_ips)
 
     # Create new PAC file
     pac_data = {
@@ -80,7 +81,7 @@ async def create_pac_file(
         "proxy_url": proxy_url,
         "editor_content": {
             "proxied_domains": proxied_domains,
-            "proxied_ips": proxied_ips,
+            "blocked_domains": blocked_domains,
             "bypassed_ips": bypassed_ips
         },
         "created_at": datetime.now().isoformat(),
@@ -127,7 +128,7 @@ async def update_pac_file(
     name: str = Form(...),
     proxy_url: str = Form(...),
     proxied_domains: str = Form(default=""),
-    proxied_ips: str = Form(default=""),
+    blocked_domains: str = Form(default=""),
     bypassed_ips: str = Form(default="")
 ):
     # Validate name format
@@ -143,7 +144,7 @@ async def update_pac_file(
         raise HTTPException(status_code=404, detail="PAC file not found")
 
     # Generate new PAC content
-    pac_content = generate_pac_content(proxy_url, proxied_domains, proxied_ips, bypassed_ips)
+    pac_content = generate_pac_content(proxy_url, proxied_domains, blocked_domains, bypassed_ips)
 
     # Update PAC file
     updated_data = {
@@ -153,7 +154,7 @@ async def update_pac_file(
         "proxy_url": proxy_url,
         "editor_content": {
             "proxied_domains": proxied_domains,
-            "proxied_ips": proxied_ips,
+            "blocked_domains": blocked_domains,
             "bypassed_ips": bypassed_ips
         },
         "updated_at": datetime.now().isoformat()
@@ -166,14 +167,16 @@ async def update_pac_file(
         "pac_file": updated_data
     })
 
-def generate_pac_content(proxy_url, proxied_domains, proxied_ips, bypassed_ips):
-    # Helper function to filter out comments and empty lines
+def generate_pac_content(proxy_url, proxied_domains, blocked_domains, bypassed_ips):
+    # Helper function to filter out comments, empty lines, and domains with quotes
     def filter_rules(lines):
-        return [line.strip() for line in lines if line.strip() and not line.strip().startswith(('#', '//'))]
+        return [line.strip() for line in lines if line.strip() and
+                not line.strip().startswith(('#', '//')) and
+                '"' not in line and "'" not in line]
 
     # Filter and process rules
     proxied_domains = filter_rules(proxied_domains.split('\n')) if proxied_domains else []
-    proxied_ips = filter_rules(proxied_ips.split('\n')) if proxied_ips else []
+    blocked_domains = filter_rules(blocked_domains.split('\n')) if blocked_domains else []
     bypassed_ips = filter_rules(bypassed_ips.split('\n')) if bypassed_ips else []
 
     # Generate optimized PAC content
@@ -184,7 +187,7 @@ def generate_pac_content(proxy_url, proxied_domains, proxied_ips, bypassed_ips):
     # Add bypass IPs if any
     if bypassed_ips:
         bypass_conditions = " ||\n        " + " ||\n        ".join(
-            [f'isInNet(host, "{ip.split("/")[0]}", netmaskFromPrefix("{ip.split("/")[1]}"))'
+            [f'isInNet(host, "{ip.split("/")[0]}", netmaskFromPrefix({ip.split("/")[1]}))'
              for ip in bypassed_ips]
         )
         pac_content += bypass_conditions
@@ -209,16 +212,14 @@ def generate_pac_content(proxy_url, proxied_domains, proxied_ips, bypassed_ips):
     }}
 """
 
-    # Add proxied IPs if any
-    if proxied_ips:
-        ip_conditions = " ||\n        " + " ||\n        ".join(
-            [f'isInNet(host, "{ip.split("/")[0]}", netmaskFromPrefix("{ip.split("/")[1]}"))'
-             for ip in proxied_ips]
-        )
+    # Add blocked domains if any
+    if blocked_domains:
+        # Concatenate blocked domains into a single string for faster matching
+        blocked_domains_str = '|' + '|'.join(blocked_domains) + '|'
         pac_content += f"""
-    // Use proxy for specific IP ranges
-    if ({ip_conditions}) {{
-        return "{proxy_url}";
+    // Block specific domains using substring matching
+    if ("{blocked_domains_str}".indexOf('|' + host + '|') !== -1) {{
+        return "PROXY 0.0.0.0; DROP";
     }}
 """
 
@@ -428,3 +429,41 @@ async def delete_log(pac_id: str, request: Request):
     if delete_access_log(pac_id):
         return RedirectResponse(url=f"{request.scope.get('root_path', '')}/log/{pac_id}", status_code=303)
     raise HTTPException(status_code=404, detail="Log not found")
+
+async def fetch_easylist():
+    url = "https://easylist.to/easylist/easylist.txt"
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, timeout=30.0)
+            response.raise_for_status()
+            return response.text
+        except Exception as e:
+            logger.error(f"Failed to fetch EasyList: {str(e)}")
+            raise Exception("Failed to fetch EasyList")
+
+def parse_easylist(content):
+    """Parse EasyList content and extract domains"""
+    try:
+        domains = set()
+        for line in content.splitlines():
+            line = line.strip()
+            # Only process lines that match the pattern ||domain.com^
+            if line.startswith('||') and line.endswith('^'):
+                domain = line[2:-1]  # Remove || and ^
+                if domain and '.' in domain:
+                    domains.add(domain)
+        return sorted(domains)
+    except Exception as e:
+        raise Exception(f"Error parsing EasyList: {str(e)}")
+
+@router.get("/easylist")
+async def get_easylist():
+    try:
+        content = await fetch_easylist()
+        domains = parse_easylist(content)
+        return {"domains": domains}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching EasyList: {str(e)}"
+        )
