@@ -219,7 +219,7 @@ def generate_pac_content(proxy_url, proxied_domains, blocked_domains, bypassed_i
         pac_content += f"""
     // Block specific domains using substring matching
     if ("{blocked_domains_str}".indexOf('|' + host + '|') !== -1) {{
-        return "PROXY 0.0.0.0; DROP";
+        return "PROXY 0.0.0.0:0";
     }}
 """
 
