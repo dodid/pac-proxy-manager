@@ -88,6 +88,8 @@
         border-radius: 0.375rem;
         box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
         display: none; /* hide by default */
+        left: 0;
+        right: auto;
     }
     .dropdown-item {
         padding: 0.5rem 1rem;
@@ -105,6 +107,24 @@
     .dropdown-item.text-danger:hover {
         background-color: #fff5f5;
     }
+    .btn-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    @media (max-width: 1200px) {
+        .btn-group .btn {
+            display: none;
+        }
+        .dropdown {
+            display: block !important;
+        }
+    }
+    @media (min-width: 1200px) {
+        .dropdown {
+            display: none !important;
+        }
+    }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -121,9 +141,9 @@
                 <tr>
                     <th class="ps-4">Name</th>
                     <th style="width: 30%; max-width: 30%;">Proxy URL</th>
-                    <th class="text-center"><i class="fas fa-random" title="Proxied"></i></th>
-                    <th class="text-center"><i class="fas fa-ban" title="Blocked"></i></th>
-                    <th class="text-center"><i class="fas fa-arrow-right" title="Bypassed"></i></th>
+                    <th class="text-center"><i class="fas fa-random" data-bs-toggle="tooltip" title="Proxied"></i></th>
+                    <th class="text-center"><i class="fas fa-ban" data-bs-toggle="tooltip" title="Blocked"></i></th>
+                    <th class="text-center"><i class="fas fa-arrow-right" data-bs-toggle="tooltip" title="Bypassed"></i></th>
                     <th class="ps-4 pe-4">Actions</th>
                 </tr>
             </thead>
@@ -148,29 +168,52 @@
                         <span>{{ pac.bypassed_count }}</span>
                     </td>
                     <td class="pe-4 align-middle">
-                        <div class="d-flex gap-2">
-                            <a href="{{ request.url_for('edit_pac_file_form', pac_id=pac.id) }}" class="btn action-btn">
-                                <i class="fas fa-edit"></i>Edit
-                            </a>
-                            <button class="btn action-btn copy-url-btn" data-id="{{ pac.id }}">
-                                <i class="fas fa-copy"></i>Copy
-                            </button>
-                            <button class="btn action-btn test-url-btn" data-id="{{ pac.id }}">
-                                <i class="fas fa-vial"></i>Test URL
-                            </button>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <div class="btn-group" role="group">
+                                <a href="{{ request.url_for('edit_pac_file_form', pac_id=pac.id) }}" class="btn action-btn">
+                                    <i class="fas fa-edit"></i>Edit
+                                </a>
+                                <button class="btn action-btn copy-url-btn" data-id="{{ pac.id }}">
+                                    <i class="fas fa-copy"></i>Copy URL
+                                </button>
+                                <button class="btn action-btn test-url-btn" data-id="{{ pac.id }}">
+                                    <i class="fas fa-vial"></i>Test URL
+                                </button>
+                                <a class="btn action-btn" href="{{ request.url_for('view_access_log', pac_id=pac.id) }}">
+                                    <i class="fas fa-list"></i>Log
+                                </a>
+                                <button class="btn action-btn delete-btn" data-id="{{ pac.id }}" data-name="{{ pac.name }}">
+                                    <i class="fas fa-trash"></i>Delete
+                                </button>
+                            </div>
                             <div class="dropdown">
-                                <button class="btn action-btn dropdown-toggle" type="button" id="dropdownMenuButton{{ pac.id }}" data-bs-toggle="dropdown" aria-expanded="false">
+                                <button class="btn action-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                                     <i class="fas fa-ellipsis-v"></i>
                                 </button>
-                                <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton{{ pac.id }}">
+                                <ul class="dropdown-menu">
+                                    <li>
+                                        <a class="dropdown-item" href="{{ request.url_for('edit_pac_file_form', pac_id=pac.id) }}">
+                                            <i class="fas fa-edit"></i>Edit
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <button class="dropdown-item copy-url-btn" data-id="{{ pac.id }}">
+                                            <i class="fas fa-copy"></i>Copy URL
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button class="dropdown-item test-url-btn" data-id="{{ pac.id }}">
+                                            <i class="fas fa-vial"></i>Test URL
+                                        </button>
+                                    </li>
                                     <li>
                                         <a class="dropdown-item" href="{{ request.url_for('view_access_log', pac_id=pac.id) }}">
-                                            <i class="fas fa-list me-2"></i>View Log
+                                            <i class="fas fa-list"></i>View Log
                                         </a>
                                     </li>
                                     <li>
                                         <button class="dropdown-item text-danger delete-btn" data-id="{{ pac.id }}" data-name="{{ pac.name }}">
-                                            <i class="fas fa-trash me-2"></i>Delete
+                                            <i class="fas fa-trash"></i>Delete
                                         </button>
                                     </li>
                                 </ul>
@@ -290,7 +333,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Testing...';
 
                     // Test URL
-                    const response = await fetch(`{{ request.url_for('test_pac_url', pac_id="${pacId}") }}?url="${encodeURIComponent(testUrl)}"`);
+                    const response = await fetch(`{{ request.url_for('test_pac_url', pac_id="${pacId}") }}?url=${encodeURIComponent(testUrl)}`);
 
                     if (!response.ok) {
                         // Handle API errors
@@ -301,8 +344,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     const data = await response.json();
 
                     // Show result with tested URL and matching rule
-                    const result = data.result === 'PROXY' ? 'PROXIED' : 'DIRECT';
-                    const rule = data.matched_rule ? `\nRule: ${data.matched_rule}` : '';
+                    const result = data.result;
+                    const rule = data.matched_rule ? `\n${data.matched_rule}` : '';
                     alert(`${testUrl}: ${result}${rule}`);
 
                 } catch (error) {

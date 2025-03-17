@@ -370,7 +370,7 @@ async def test_pac_url(pac_id: str, url: str):
 
         # Check bypass rules first
         bypassed_ips = pac.get('editor_content', {}).get('bypassed_ips', '').split('\n')
-        for ip_range in bypassed_ips:
+        for rule_num, ip_range in enumerate(bypassed_ips, 1):
             ip_range = ip_range.strip()
             if not ip_range or ip_range.startswith(('!', '#', '//')):
                 continue
@@ -380,41 +380,36 @@ async def test_pac_url(pac_id: str, url: str):
                 if ip in ipaddress.ip_network(ip_range, strict=False):
                     return {
                         "result": "DIRECT",
-                        "matched_rule": f"Bypass IP Range: {ip_range}"
+                        "matched_rule": f"Bypass Rule #{rule_num}: {ip_range}"
                     }
             except ValueError:
                 continue  # Host is not an IP address
 
         # Check domains
         domains = pac.get('editor_content', {}).get('proxied_domains', '').split('\n')
-        for domain in domains:
+        for rule_num, domain in enumerate(domains, 1):
             domain = domain.strip()
-            if not domain or domain.startswith(('!', '#', '//')):
+            if not domain or domain.startswith(('#', '//')):
                 continue
-            domain = domain.lstrip('*.')
-            if host == domain or host.endswith(f".{domain}"):
+            domain_pattern = domain.replace('.', r'\.').replace('*', '[^.]*').replace('?', '.')
+            if re.match(f'^{domain_pattern}$', host):
                 return {
-                    "result": "PROXY",
+                    "result": "PROXIED",
                     "proxy": pac.get('proxy_url', ''),
-                    "matched_rule": f"Domain: {domain}"
+                    "matched_rule": f"Proxy Rule #{rule_num}: {domain}"
                 }
 
-        # Check IP ranges
-        ip_ranges = pac.get('editor_content', {}).get('proxied_ips', '').split('\n')
-        for ip_range in ip_ranges:
-            ip_range = ip_range.strip()
-            if not ip_range or ip_range.startswith(('!', '#', '//')):
+        # Check blocked domains
+        blocked_domains = pac.get('editor_content', {}).get('blocked_domains', '').split('\n')
+        for rule_num, domain in enumerate(blocked_domains, 1):
+            domain = domain.strip()
+            if not domain or domain.startswith(('#', '//')):
                 continue
-            try:
-                ip = ipaddress.ip_address(host)
-                if ip in ipaddress.ip_network(ip_range, strict=False):
-                    return {
-                        "result": "PROXY",
-                        "proxy": pac.get('proxy_url', ''),
-                        "matched_rule": f"IP Range: {ip_range}"
-                    }
-            except ValueError:
-                continue  # Host is not an IP address
+            if host == domain:
+                return {
+                    "result": "BLOCKED",
+                    "matched_rule": f"Block Rule #{rule_num}: {domain}"
+                }
 
         return {"result": "DIRECT", "matched_rule": "No matching rules found"}
 
